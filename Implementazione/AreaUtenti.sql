@@ -169,3 +169,33 @@ CREATE TABLE IF NOT EXISTS `VisualizzazioniGiornaliere` (
         ON DELETE CASCADE ON UPDATE CASCADE,
     CHECK (`NumeroVisualizzazioni` >= 0)
 );
+
+
+
+DROP EVENT IF EXISTS GestioneVisualizzazioni;
+CREATE EVENT IF NOT EXISTS GestioneVisualizzazioni
+ON SCHEDULE EVERY 1 DAY
+COMMENT 'Elimina le visualizzazioni scadute'
+DO
+    DELETE FROM Visualizzazione
+    WHERE InizioConnessione + INTERVAL 1 MONTH < CURRENT_DATE();
+
+DROP EVENT IF EXISTS GestioneConnessioni;
+CREATE EVENT IF NOT EXISTS GestioneConnessioni
+ON SCHEDULE EVERY 1 DAY
+COMMENT 'Elimina le connessioni scadute'
+DO
+    DELETE FROM Connessione
+    WHERE Inizio + INTERVAL 1 MONTH < CURRENT_DATE();
+
+DROP EVENT IF EXISTS GestioneErogazioni;
+CREATE EVENT IF NOT EXISTS GestioneErogazioni
+ON SCHEDULE EVERY 1 HOUR
+COMMENT 'Elimina le erogazioni scadute'
+DO
+    DELETE
+        E.*
+    FROM Erogazione E
+    INNER JOIN Connessione C
+        ON C.IP = E.IP AND C.Utente = E.Utente AND C.Inizio = E.InizioConnessione
+    WHERE C.Fine IS NOT NULL AND C.Fine < CURRENT_TIMESTAMP;
