@@ -46,7 +46,7 @@ BEGIN
             SELECT
                 Edizione,
                 Paese,
-                RANK() OVER (PARTITION BY Paese ORDER BY Visualizzazioni DESC) AS rk
+                RANK() OVER (PARTITION BY Paese ORDER BY Visualizzazioni DESC, Edizione) AS rk
             FROM EdizionePaeseVisualizzazioni
         ),
         EdizioniTargetPerPaese AS (
@@ -62,7 +62,7 @@ BEGIN
             SELECT
                 Server,
                 Paese,
-                RANK() OVER(PARTITION BY Paese ORDER BY ValoreDistanza) AS rk
+                RANK() OVER(PARTITION BY Paese ORDER BY ValoreDistanza, Paese) AS rk
             FROM DistanzaPrecalcolata
         ),
         ServerTargetPerPaese AS (

@@ -49,8 +49,7 @@ CREATE TABLE IF NOT EXISTS `Film` (
   `Anno` YEAR NOT NULL,
   `CasaProduzione` VARCHAR(50) NOT NULL,  
   `NomeRegista` VARCHAR(50) NOT NULL, 
-  `CognomeRegista` VARCHAR(50) NOT NULL,  
-
+  `CognomeRegista` VARCHAR(50) NOT NULL,
   `MediaRecensioni` FLOAT DEFAULT NULL,
   `NumeroRecensioni` INT NOT NULL DEFAULT 0,
   
