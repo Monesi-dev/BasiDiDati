@@ -199,3 +199,11 @@ DO
     INNER JOIN Connessione C
         ON C.IP = E.IP AND C.Utente = E.Utente AND C.Inizio = E.InizioConnessione
     WHERE C.Fine IS NOT NULL AND C.Fine < CURRENT_TIMESTAMP;
+
+DROP EVENT IF EXISTS GestioneFattura;
+CREATE EVENT IF NOT EXISTS GestioneFattura
+ON SCHEDULE EVERY 1 MONTH
+COMMENT 'Elimina le fatture scadute'
+DO
+    DELETE FROM Fattura
+    WHERE DataPagamento + INTERVAL 1 YEAR < CURRENT_DATE();
