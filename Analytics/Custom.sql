@@ -42,7 +42,7 @@ BEGIN
         WHERE NomeArtista = Nome AND CognomeArtista = CognomeArtista
     );
 
-    RETURN sum_v + sum_p * 5 + n * 100.0;
+    RETURN sum_v + sum_p * 5 + n * 50.0;
 
 END //
 DELIMITER ;
@@ -116,7 +116,7 @@ BEGIN
         WHERE NomeArtista = Nome AND CognomeArtista = CognomeArtista
     );
 
-    RETURN sum_v + sum_p * 5 + n * 100.0;
+    RETURN sum_v + sum_p * 5 + n * 50.0;
 
 END
 //

@@ -64,20 +64,20 @@ ribilancia_body:BEGIN
         WITH `ServerPiuCarichi` AS (
             SELECT S.`ID`
             FROM `ServerConCarico` S
-            WHERE S.`CaricoPercentuale` >= `MediaCarichi`
+            WHERE S.`CaricoPercentuale` >= (SELECT AVG(`CaricoPercentuale`) FROM `ServerConCarico`)
             ORDER BY S.`CaricoPercentuale` DESC
             LIMIT 3
         ), `ServerErogazioni` AS (
-            SELECT E.*
+            SELECT E.*, TIMESTAMPDIFF(SECOND, CURRENT_TIMESTAMP, E.`TimeStamp`) AS "TempoTrascorso"
             FROM `ServerPiuCarichi` S
                 INNER JOIN `Erogazione` E ON S.`ID` = E.`Server`
             WHERE TIMESTAMPDIFF(MINUTE, E.`InizioErogazione`, CURRENT_TIMESTAMP) > 29
         ), `ErogazioniNonAlTermine` AS (
-            SELECT E.*, E.`InizioConnessione` AS "Inizio"
+            SELECT E.*, E.`InizioConnessione` AS "Inizio", (Ed.`Lunghezza` - E.TempoTrascorso) AS "TempoMancante"
             FROM `ServerErogazioni` E
                 INNER JOIN `Edizione` Ed ON E.`Edizione` = Ed.`ID`
                 -- Calcolo quanto dovrebbe mancare al termine della visione e controllo che sia sotto i 10 min
-            -- WHERE Ed.`Lunghezza` - TIMESTAMPDIFF(SECOND, CURRENT_TIMESTAMP, E.`TimeStamp`) <= 600
+            HAVING "TempoMancante" <= 600
         )
         SELECT 
             E.`Server`, E.`Edizione`, E.`IP`,
@@ -136,7 +136,7 @@ ribilancia_body:BEGIN
             LEAVE ciclo;
         END IF;
 
-        SET paese_utente = Ip2Paese(ip_utente);
+        SET paese_utente = Ip2PaeseStorico(ip_utente, timestamp_conn);
 
         CALL `TrovaMigliorServer`(
             edizione_id, paese_utente, max_definiz, 
@@ -188,7 +188,7 @@ ribilancia_body:BEGIN
             A.`Alternativa`, A.`File`, A.`Punteggio`
         FROM `ConClassifica` A
             INNER JOIN `Server` S ON A.`Server` = S.`ID`
-        WHERE A.`Classifica` <= ROUND(S.`MaxConnessioni` / 20); -- Per ogni Server sposto al massimo il 5% del suo MaxConnessioni
+        WHERE A.`Classifica` <= FLOOR(S.`MaxConnessioni` / 20) + 1; -- Per ogni Server sposto al massimo il 5% del suo MaxConnessioni
 
 END ; $$
 

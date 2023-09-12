@@ -1,5 +1,6 @@
 USE `FilmSphere`;
 
+
 CREATE OR REPLACE VIEW `FilmMiglioriRecensioni` AS
     SELECT f.`Titolo`, f.`ID`, f.`MediaRecensioni`
     FROM `Film` f

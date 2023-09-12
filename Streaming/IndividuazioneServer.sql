@@ -132,7 +132,7 @@ CREATE PROCEDURE `TrovaMigliorServer` (
     ), `ServerDisponibili` AS (
         SELECT S.`ID`, S.`CaricoAttuale`, S.`MaxConnessioni`
         FROM `Server` S
-        WHERE NOT StrListContains(ServerDaEscludere, S.`ID`)
+        WHERE S.`CaricoAttuale` < 1 AND NOT StrListContains(ServerDaEscludere, S.`ID`) 
     ), `FileServerScore` AS (
         SELECT 
             F.`ID`,

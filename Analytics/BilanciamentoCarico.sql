@@ -27,8 +27,10 @@ BEGIN
         VisualizzazionePaese AS (
             SELECT
                 V.*,
-                Ip2PaeseStorico(V.IP, V.InizioConnessione) AS Paese
+                Paese
             FROM Visualizzazione V
+            INNER JOIN IPRange IP
+                    ON IP.Inizio <= V.IP AND IP.Fine >= V.IP AND IP.DataInizio <= V.InizioConnessione AND (IP.DataFine IS NULL OR IP.DataFine >= V.InizioConnessione)
         ),
 
         -- 2) Ottieni Tabella T(Edizione, Paese, Visualizzazioni)

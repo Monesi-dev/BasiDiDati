@@ -22,8 +22,10 @@ BEGIN
                     ON V.Utente = U.Codice
                 INNER JOIN Edizione E
                     ON E.ID = V.Edizione
+                INNER JOIN IPRange IP
+                    ON IP.Inizio <= V.IP AND IP.Fine >= V.IP AND IP.DataInizio <= V.InizioConnessione AND (IP.DataFine IS NULL OR IP.DataFine >= V.InizioConnessione)
                 WHERE U.Abbonamento = tipo_abbonamento
-                AND Ip2PaeseStorico(V.IP, V.InizioConnessione) = codice_paese
+                AND IP.Paese = codice_paese
                 GROUP BY E.Film
             )
         SELECT
@@ -42,8 +44,10 @@ BEGIN
                 FROM Visualizzazione V
                 INNER JOIN Utente U
                     ON V.Utente = U.Codice
+                INNER JOIN IPRange IP
+                    ON IP.Inizio <= V.IP AND IP.Fine >= V.IP AND IP.DataInizio <= V.InizioConnessione AND (IP.DataFine IS NULL OR IP.DataFine >= V.InizioConnessione)
                 WHERE U.Abbonamento = tipo_abbonamento
-                AND Ip2PaeseStorico(V.IP, V.InizioConnessione) = codice_paese
+                AND IP.Paese = codice_paese
                 GROUP BY V.Edizione
             )
         SELECT

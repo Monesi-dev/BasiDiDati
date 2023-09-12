@@ -1,29 +1,46 @@
 USE `FilmSphere`;
 
-DROP PROCEDURE IF EXISTS `FilmPiuVistiRecentemente`;
+DROP PROCEDURE IF EXISTS `FilmPocoPopolari`;
 DELIMITER //
-CREATE PROCEDURE `FilmPiuVistiRecentemente`(IN numero_film INT)
+CREATE PROCEDURE IF NOT EXISTS `FilmPocoPopolari`(
+    IN codice_utente VARCHAR(100),
+    IN popolarita_massima FLOAT
+)
 BEGIN
 
     WITH
-        TitoloVisualizzazione AS (
+        FilmEsclusi AS (
             SELECT
-                F.Titolo,
-                COUNT(*) Visualizzazioni
-            FROM Visualizzazione V
-            INNER JOIN Edizione E
-                ON E.ID = V.Edizione
-            INNER JOIN Film F
-                ON F.ID = E.Film
-            GROUP BY F.Titolo
+                GF.Film
+            FROM Utente U
+            INNER JOIN Esclusione E
+                USING(Abbonamento)
+            INNER JOIN GenereFilm GF
+                USING(Genere)
+            WHERE U.Codice = codice_utente
+        ),
+        FilmTroppoPopolari AS (
+            SELECT DISTINCT
+                F.ID AS Film
+            FROM Film F
+            INNER JOIN Recitazione R
+                ON F.ID = R.Film
+            INNER JOIN Artista At
+                ON At.Nome = R.NomeAttore AND At.Cognome = R.CognomeAttore
+            INNER JOIN Artista Di
+                ON Di.Nome = F.NomeRegista AND Di.Cognome = F.CognomeRegista
+            WHERE At.Popolarita > popolarita_massima OR Di.Popolarita > popolarita_massima
         )
     SELECT
-        Titolo
-    FROM TitoloVisualizzazione
-    ORDER BY Visualizzazioni DESC,
-        Titolo ASC
-    LIMIT numero_film;
+        F.ID,
+        F.Titolo
+    FROM Film F
+    WHERE F.ID NOT IN (
+        SELECT * FROM FilmEsclusi
+    )
+    AND F.ID NOT IN (
+        SELECT * FROM FilmTroppoPopolari
+    );
 
-END
-//
+END //
 DELIMITER ;

@@ -23,8 +23,10 @@ BEGIN
             FROM (
                 SELECT
                     Utente,
-                    Ip2PaeseStorico(IP, InizioConnessione) AS Paese
-                FROM Visualizzazione
+                    Paese
+                FROM Visualizzazione V
+                INNER JOIN IPRange IP
+                    ON IP.Inizio <= V.IP AND IP.Fine >= V.IP AND IP.DataInizio <= V.InizioConnessione AND (IP.DataFine IS NULL OR IP.DataFine >= V.InizioConnessione)
             ) AS T
             GROUP BY Utente, Paese
         ),
@@ -169,8 +171,6 @@ BEGIN
     ORDER BY Importanza DESC
     LIMIT X;
 
-
-
-
 END
 //
+DELIMITER ;

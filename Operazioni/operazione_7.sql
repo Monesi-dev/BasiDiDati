@@ -1,6 +1,6 @@
 USE `FilmSphere`;
 
-    DROP PROCEDURE IF EXISTS `CambioAbbonamento`;
+DROP PROCEDURE IF EXISTS `CambioAbbonamento`;
 DELIMITER //
 CREATE PROCEDURE `CambioAbbonamento`(IN codice_utente VARCHAR(100), IN tipo_abbonamento VARCHAR(50))
 BEGIN
