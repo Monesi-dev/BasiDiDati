@@ -49,7 +49,8 @@ CREATE TABLE IF NOT EXISTS `Film` (
   `Anno` YEAR NOT NULL,
   `CasaProduzione` VARCHAR(50) NOT NULL,  
   `NomeRegista` VARCHAR(50) NOT NULL, 
-  `CognomeRegista` VARCHAR(50) NOT NULL,
+  `CognomeRegista` VARCHAR(50) NOT NULL,  
+
   `MediaRecensioni` FLOAT DEFAULT NULL,
   `NumeroRecensioni` INT NOT NULL DEFAULT 0,
   
@@ -309,7 +310,7 @@ CREATE TABLE IF NOT EXISTS `Utente` (
 	`Abbonamento` VARCHAR(50),
 	`DataInizioAbbonamento` DATE,
 
-	CHECK( `Email` REGEXP '[A-Za-z0-9]{1,}[\.\-A-Za-z0-9]{0,}[a-zA-Z0-9]@[a-z]{1}[\.\-\_a-z0-9]{0,}\.[a-z]{1,10}')
+	CHECK(`Email` REGEXP '[A-Za-z0-9]{1,}[\.\-A-Za-z0-9]{0,}[a-zA-Z0-9]@[a-z]{1}[\.\-\_a-z0-9]{0,}\.[a-z]{1,10}')
 ) Engine=InnoDB;
 
 
@@ -327,38 +328,38 @@ CREATE TABLE IF NOT EXISTS `Recensione` (
 	CHECK(`Voto` BETWEEN 0.0 AND 5.0)
 ) Engine=InnoDB;
 
-DROP TRIGGER IF EXISTS InserimentoRecensione;
-DROP TRIGGER IF EXISTS CancellazioneRecensione;
-DROP TRIGGER IF EXISTS ModificaRecensione;
+DROP TRIGGER IF EXISTS `InserimentoRecensione`;
+DROP TRIGGER IF EXISTS `CancellazioneRecensione`;
+DROP TRIGGER IF EXISTS `ModificaRecensione`;
 
-DROP PROCEDURE IF EXISTS AggiungiRecensione;
-DROP PROCEDURE IF EXISTS RimuoviRecensione;
+DROP PROCEDURE IF EXISTS `AggiungiRecensione`;
+DROP PROCEDURE IF EXISTS `RimuoviRecensione`;
 
 DELIMITER $$
 
-CREATE TRIGGER InserimentoRecensione
-AFTER INSERT ON Recensione
+CREATE TRIGGER `InserimentoRecensione`
+AFTER INSERT ON `Recensione`
 FOR EACH ROW
 BEGIN
 	CALL AggiungiRecensione(NEW.`Film`, NEW.`Voto`);
 END ; $$
 
-CREATE TRIGGER CancellazioneRecensione
-AFTER DELETE ON Recensione
+CREATE TRIGGER `CancellazioneRecensione`
+AFTER DELETE ON `Recensione`
 FOR EACH ROW
 BEGIN
 	CALL RimuoviRecensione(OLD.`Film`, OLD.`Voto`);
 END ; $$
 
-CREATE TRIGGER ModificaRecensione
-AFTER UPDATE ON Recensione
+CREATE TRIGGER `ModificaRecensione`
+AFTER UPDATE ON `Recensione`
 FOR EACH ROW
 BEGIN
 	CALL AggiungiRecensione(NEW.`Film`, NEW.`Voto`);
 	CALL RimuoviRecensione(OLD.`Film`, OLD.`Voto`);
 END ; $$
 
-CREATE PROCEDURE AggiungiRecensione(IN Film_ID INT, IN ValoreVoto FLOAT)
+CREATE PROCEDURE `AggiungiRecensione`(IN Film_ID INT, IN ValoreVoto FLOAT)
 BEGIN
 	UPDATE `Film`
 	SET 
@@ -370,7 +371,7 @@ BEGIN
 	WHERE `Film`.`ID` = Film_ID;
 END ; $$
 
-CREATE PROCEDURE RimuoviRecensione(IN Film_ID INT, IN ValoreVoto FLOAT)
+CREATE PROCEDURE `RimuoviRecensione`(IN Film_ID INT, IN ValoreVoto FLOAT)
 BEGIN
 	UPDATE `Film`
 	SET 
@@ -385,27 +386,29 @@ END ; $$
 DELIMITER ;
 
 CREATE TABLE IF NOT EXISTS `Connessione` (
-	`Utente` VARCHAR(100) NOT NULL,
 	`IP` INT UNSIGNED NOT NULL,
-	`Inizio` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-	`Fine` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-	`Hardware` VARCHAR(256),
+	`Inizio` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+	`Utente` VARCHAR(100) NOT NULL,
+	`Fine` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+	`Hardware` VARCHAR(256) NOT NULL DEFAULT 'Dispositivo sconosciuto',
 
-	PRIMARY KEY (`Utente`, `IP`, `Inizio`),
-	FOREIGN KEY (`Utente`) REFERENCES `Utente` (`Codice`)
-	ON UPDATE CASCADE ON DELETE CASCADE,
+	-- Chiavi
+	PRIMARY KEY (`IP`, `Inizio`, `Utente`),
+	FOREIGN KEY (`Utente`) REFERENCES `Utente` (`Codice`) ON UPDATE CASCADE ON DELETE CASCADE,
 
+	-- Vincoli di dominio
+	-- CHECK (`IP` >= 16777216), -- Un IP non puo' assumere tutti i valori di un intero
 	CHECK (`Fine` >= `Inizio`)
 ) Engine=InnoDB;
 
 CREATE TABLE IF NOT EXISTS `Visualizzazione` (
-    `Timestamp` TIMESTAMP NOT NULL,
-    `Edizione` INT NOT NULL,
-    `Utente` VARCHAR(100) NOT NULL,
     `IP` INT UNSIGNED NOT NULL,
-    `InizioConnessione` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `InizioConnessione` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    `Utente` VARCHAR(100) NOT NULL,
+    `Edizione` INT NOT NULL,
+    `Timestamp` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
-    PRIMARY KEY(`Timestamp`, `Edizione`, `Utente`, `IP`, `InizioConnessione`),
+    PRIMARY KEY(`IP`, `InizioConnessione`, `Timestamp`, `Edizione`, `Utente`),
     FOREIGN KEY (`Utente`, `IP`, `InizioConnessione`) REFERENCES `Connessione` (`Utente`, `IP`, `Inizio`)
       ON DELETE CASCADE ON UPDATE CASCADE,
     FOREIGN KEY (`Edizione`) REFERENCES `Edizione` (`ID`)
@@ -460,52 +463,85 @@ CREATE TABLE IF NOT EXISTS `Fattura` (
 
 CREATE TABLE IF NOT EXISTS `VisualizzazioniGiornaliere` (
     `Film` INT NOT NULL,
+	`Paese` CHAR(2) NOT NULL DEFAULT '??',
     `Data` DATE NOT NULL,
-    `NumeroVisualizzazioni` INT,
-    PRIMARY KEY (`Film`, `Data`),
+
+    `NumeroVisualizzazioni` INT DEFAULT 0,
+    
+	-- Chiavi
+	PRIMARY KEY (`Film`, `Paese`, `Data`),
     FOREIGN KEY (`Film`) REFERENCES `Film` (`ID`)
         ON DELETE CASCADE ON UPDATE CASCADE,
+    FOREIGN KEY (`Paese`) REFERENCES `Paese` (`Codice`)
+        ON DELETE CASCADE ON UPDATE CASCADE,
+
+	-- Vincoli di dominio
     CHECK (`NumeroVisualizzazioni` >= 0)
 );
 
+DROP PROCEDURE IF EXISTS `VisualizzazoniGiornaliereBuild`;
+DROP PROCEDURE IF EXISTS `VisualizzazoniGiornaliereFullReBuild`;
+DROP EVENT IF EXISTS `VisualizzazioniGiornaliereEvent`;
 
+DELIMITER $$
 
-DROP EVENT IF EXISTS GestioneVisualizzazioni;
-CREATE EVENT IF NOT EXISTS GestioneVisualizzazioni
+CREATE PROCEDURE `VisualizzazoniGiornaliereBuild` ()
+proc_body:BEGIN
+
+	DECLARE `data_target` DATE DEFAULT SUBDATE(CURRENT_DATE, 1);
+
+	IF EXISTS (
+		SELECT v.*
+		FROM `VisualizzazioniGiornaliere` v
+		WHERE v.`Data` = `data_target`
+	) THEN
+
+		SIGNAL SQLSTATE '01000'
+			SET MESSAGE_TEXT = 'Procedura già lanciata oggi!';
+		LEAVE proc_body;
+	END IF;
+
+	INSERT INTO `VisualizzazioniGiornaliere` (`Film`, `Paese`, `Data`, `NumeroVisualizzazioni`)
+		WITH `VisFilmData` AS (
+			SELECT V.`IP`, E.`Film`, DATE(V.`Timestamp`) AS "Data", V.`InizioConnessione`
+			FROM `Visualizzazione` V
+				INNER JOIN `Edizione` E ON E.`ID` = V.`Edizione`
+		)
+		SELECT V.`Film`, IFNULL(r.`Paese`, '??') AS "Paese", V.`Data`, COUNT(*)
+		FROM `VisFilmData` V
+			LEFT OUTER JOIN `IPRange` r ON     	
+				(V.`IP` BETWEEN r.`Inizio` AND r.`Fine`) AND 
+        		(V.`InizioConnessione` BETWEEN r.`DataInizio` AND IFNULL(r.`DataFine`, CURRENT_TIMESTAMP))
+		WHERE V.`Data` = `data_target`
+		GROUP BY V.`Film`, "Paese", V.`Data`;
+END ; $$
+
+CREATE PROCEDURE `VisualizzazoniGiornaliereFullReBuild` ()
+BEGIN
+	DECLARE `min_date` DATE DEFAULT SUBDATE(CURRENT_DATE, 32);
+
+	REPLACE INTO `VisualizzazioniGiornaliere` (`Film`, `Paese`, `Data`, `NumeroVisualizzazioni`)
+		WITH `VisFilmData` AS (
+			SELECT V.`IP`, E.`Film`, DATE(V.`Timestamp`) AS "Data", V.`InizioConnessione`
+			FROM `Visualizzazione` V
+				INNER JOIN `Edizione` E ON E.`ID` = V.`Edizione`
+		)
+		SELECT V.`Film`, IFNULL(r.`Paese`, '??') AS "Paese", V.`Data`, COUNT(*)
+		FROM `VisFilmData` V
+			LEFT OUTER JOIN `IPRange` r ON     	
+				(V.`IP` BETWEEN r.`Inizio` AND r.`Fine`) AND 
+        		(V.`InizioConnessione` BETWEEN r.`DataInizio` AND IFNULL(r.`DataFine`, CURRENT_TIMESTAMP))
+		WHERE `min_date` <= V.`Data`
+		GROUP BY V.`Film`, "Paese", V.`Data`;
+END ; $$
+
+CREATE EVENT `VisualizzazioniGiornaliereEvent`
 ON SCHEDULE EVERY 1 DAY
-COMMENT 'Elimina le visualizzazioni scadute'
 DO
-    DELETE FROM Visualizzazione
-    WHERE InizioConnessione + INTERVAL 1 MONTH < CURRENT_DATE();
+	CALL `VisualizzazoniGiornaliereBuild`();
+$$
 
-DROP EVENT IF EXISTS GestioneConnessioni;
-CREATE EVENT IF NOT EXISTS GestioneConnessioni
-ON SCHEDULE EVERY 1 DAY
-COMMENT 'Elimina le connessioni scadute'
-DO
-    DELETE FROM Connessione
-    WHERE Inizio + INTERVAL 1 MONTH < CURRENT_DATE();
-
-DROP EVENT IF EXISTS GestioneErogazioni;
-CREATE EVENT IF NOT EXISTS GestioneErogazioni
-ON SCHEDULE EVERY 1 HOUR
-COMMENT 'Elimina le erogazioni scadute'
-DO
-    DELETE
-        E.*
-    FROM Erogazione E
-    INNER JOIN Connessione C
-        ON C.IP = E.IP AND C.Utente = E.Utente AND C.Inizio = E.InizioConnessione
-    WHERE C.Fine IS NOT NULL AND C.Fine < CURRENT_TIMESTAMP;
-
-DROP EVENT IF EXISTS GestioneFattura;
-CREATE EVENT IF NOT EXISTS GestioneFattura
-ON SCHEDULE EVERY 1 MONTH
-COMMENT 'Elimina le fatture scadute'
-DO
-    DELETE FROM Fattura
-    WHERE DataPagamento + INTERVAL 1 YEAR < CURRENT_DATE();
-
+DELIMITER ;
 
 -- ----------------------------
 -- AREA STREAMING
@@ -635,27 +671,27 @@ DELIMITER ;
 
 CREATE TABLE IF NOT EXISTS `Erogazione` (
     -- Uguali a Visualizzazione
-    `TimeStamp` TIMESTAMP NOT NULL,
-    `Edizione` INT NOT NULL,
-    `Utente` VARCHAR(100) NOT NULL,
     `IP` INT UNSIGNED NOT NULL,
-    `InizioConnessione` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `InizioConnessione` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    `Utente` VARCHAR(100) NOT NULL,
+    `Edizione` INT NOT NULL,
+    `Timestamp` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
     -- Quando il Server ha iniziato a essere usato
-    `InizioErogazione` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `InizioErogazione` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 
     -- Il Server in uso
     `Server` INT NOT NULL,
 
     -- Chiavi
-    PRIMARY KEY (`TimeStamp`, `Edizione`, `Utente`, `IP`, `InizioConnessione`),
-    FOREIGN KEY (`TimeStamp`, `Edizione`, `Utente`, `IP`, `InizioConnessione`)
-        REFERENCES `Visualizzazione`(`TimeStamp`, `Edizione`, `Utente`, `IP`, `InizioConnessione`) 
+    PRIMARY KEY (`IP`, `InizioConnessione`, `Timestamp`, `Edizione`, `Utente`),
+    FOREIGN KEY (`IP`, `InizioConnessione`, `Timestamp`, `Edizione`, `Utente`)
+        REFERENCES `Visualizzazione`(`IP`, `InizioConnessione`, `Timestamp`, `Edizione`, `Utente`) 
         ON UPDATE CASCADE ON DELETE CASCADE,
     FOREIGN KEY (`Server`) REFERENCES `Server`(`ID`) ON UPDATE CASCADE ON DELETE CASCADE
 
     -- Vincoli di dominio
-    -- CHECK (`TimeStamp` BETWEEN `InizioConnessione` AND `InizioErogazione`)
+    -- CHECK (`Timestamp` BETWEEN `InizioConnessione` AND `InizioErogazione`)
 ) Engine=InnoDB;
 
 DROP PROCEDURE IF EXISTS AggiungiErogazioneServer;
@@ -685,8 +721,7 @@ CREATE TRIGGER `ModificaErogazione`
 BEFORE UPDATE ON Erogazione
 FOR EACH ROW     
 BEGIN
-    SET NEW.InizioErogazione = CURRENT_TIMESTAMP;
-
+    -- SET NEW.InizioErogazione = CURRENT_TIMESTAMP;
     IF NEW.`Server` <> OLD.`Server` THEN
         CALL AggiungiErogazioneServer(NEW.`Server`);
         CALL RimuoviErogazioneServer(OLD.`Server`);
@@ -734,11 +769,6 @@ CREATE TABLE IF NOT EXISTS `IPRange` (
 
 -- Rimuovo funzioni, trigger e schedule prima di riaggiungerli
 
-DROP FUNCTION IF EXISTS `Ip2Int`;
-DROP FUNCTION IF EXISTS `LocalHostIpParse`;
-DROP FUNCTION IF EXISTS `IpOk`;
-DROP FUNCTION IF EXISTS `Int2Ip`;
-
 DROP FUNCTION IF EXISTS `IpRangeCollidono`;
 DROP FUNCTION IF EXISTS `IpRangeValidoInData`;
 DROP FUNCTION IF EXISTS `IpAppartieneRangeInData`;
@@ -747,94 +777,16 @@ DROP FUNCTION IF EXISTS `Ip2Paese`;
 DROP FUNCTION IF EXISTS `Ip2PaeseStorico`;
 
 DROP FUNCTION IF EXISTS `IpRangePossoInserire`;
+
+DROP PROCEDURE IF EXISTS `IpRangeInserisciFidato`;
+DROP PROCEDURE IF EXISTS `IpRangeInserisciAdessoFidato`;
+
 DROP PROCEDURE IF EXISTS `IpRangeProvaInserire`;
 DROP PROCEDURE IF EXISTS `IpRangeProvaInserireAdesso`;
 
 DROP TRIGGER IF EXISTS `IpRangeControlloAggiornamento`;
 
 DELIMITER $$
-
--- ----------------------------------------------------
---
---           Funzioni di utilita' sugli IP4
---
--- ----------------------------------------------------
-
-
-CREATE FUNCTION `LocalHostIpParse`(IP VARCHAR(15))
-RETURNS VARCHAR(15)
-DETERMINISTIC
-BEGIN
-
-    IF LOWER(IP) = 'localhost' OR IP = '0' OR IP = '0.0.0.0' THEN
-        -- Localchost ip
-        RETURN '127.0.0.1';
-    END IF;
-
-    RETURN IP;
-END ; $$
-
-CREATE FUNCTION `IpOk`(IP VARCHAR(15))
-RETURNS BOOLEAN
-DETERMINISTIC
-BEGIN
-    DECLARE IpParsed VARCHAR(15) DEFAULT NULL;
-    DECLARE regex_base CHAR(38) DEFAULT '(25[0-5]|2[0-4][0-9]|[01]?[0-9]?[0-9])';
-    
-    IF IP IS NULL THEN
-        RETURN FALSE;
-    END IF;
-
-    SET IpParsed = LocalHostIpParse(IP);
-
-    RETURN IpParsed REGEXP CONCAT(regex_base, '\.', regex_base, '\.', regex_base, '\.', regex_base);
-END ; $$
-
-CREATE FUNCTION `Ip2Int`(IP VARCHAR(15))
-RETURNS INT UNSIGNED
-DETERMINISTIC
-BEGIN
-    DECLARE Int2Return INT UNSIGNED DEFAULT 0;
-    DECLARE IP_Str VARCHAR(15) DEFAULT NULL; 
-
-    IF NOT IpOk(IP) THEN
-        RETURN 0;
-    END IF;
-
-    SET IP_Str = IP;
-
-    SET Int2Return = CAST(SUBSTRING_INDEX(IP_Str, '.', -1) AS UNSIGNED);
-    SET IP_Str = SUBSTRING_INDEX(IP_Str, '.', 3);
-
-    SET Int2Return = Int2Return + CAST(SUBSTRING_INDEX(IP_Str, '.', -1) AS UNSIGNED) * 256;
-    SET IP_Str = SUBSTRING_INDEX(IP_Str, '.', 2);
-
-    SET Int2Return = Int2Return + CAST(SUBSTRING_INDEX(IP_Str, '.', -1) AS UNSIGNED) * 65536;
-    SET IP_Str = SUBSTRING_INDEX(IP_Str, '.', 1);
-
-    SET Int2Return = Int2Return + CAST(SUBSTRING_INDEX(IP_Str, '.', -1) AS UNSIGNED) * 16777216;
-
-    RETURN Int2Return;
-END ; $$
-
-CREATE FUNCTION `Int2Ip`(IP INT UNSIGNED)
-RETURNS VARCHAR(15)
-DETERMINISTIC
-BEGIN
-    DECLARE HexStr CHAR(15) DEFAULT NULL;
-
-    SET HexStr = LPAD(HEX(IP), 8, 0);
-
-    RETURN CONCAT(
-        CONV(SUBSTR(HexStr, 1, 2), 16, 10), -- 1 and 2
-        '.',
-        CONV(SUBSTR(HexStr, 3, 2), 16, 10), -- 3 and 4
-        '.',
-        CONV(SUBSTR(HexStr, 5, 2), 16, 10), -- 5 and 6
-        '.',
-        CONV(SUBSTR(HexStr, 7, 2), 16, 10) -- 7 and 8
-    );
-END ; $$
 
 -- ----------------------------------------------------
 --
@@ -871,11 +823,7 @@ BEGIN
         RETURN FineValidita IS NULL;
     END IF;
 
-    IF FineValidita IS NULL THEN
-        RETURN InizioValidita <= IstanteDaControllare;
-    END IF;
-
-    RETURN IstanteDaControllare BETWEEN InizioValidita AND FineValidita;
+    RETURN IstanteDaControllare BETWEEN InizioValidita AND IFNULL(FineValidita, CURRENT_TIMESTAMP);
 END ; $$
 
 CREATE FUNCTION `IpAppartieneRangeInData`(
@@ -908,8 +856,7 @@ BEGIN
     WHERE IpAppartieneRangeInData(
         r.`Inizio`, r.`Fine`, 
         r.`DataInizio`, r.`DataFine`, 
-        ip, DataDaControllare) AND
-        r.Paese <> '??'
+        ip, DataDaControllare)
     LIMIT 1;
 
     IF Codice IS NULL THEN
@@ -972,6 +919,30 @@ BEGIN
     RETURN TRUE;
 END ; $$
 
+-- Inserimento di range senza effettuare controlli
+
+CREATE PROCEDURE `IpRangeInserisciFidato` (
+    IN `NewInizio` INT UNSIGNED, IN `NewFine` INT UNSIGNED, 
+    IN `NewDataInizio` TIMESTAMP, IN `NewDataFine` TIMESTAMP, 
+    IN `NewPaese` CHAR(2), IN `InvalidaCollisioni` BOOLEAN
+)
+BEGIN
+    IF `InvalidaCollisioni` THEN
+        -- Se il record inserito "rompe" uno gia' presente, con meno piorita' si fa scadere quello gia' presente
+        UPDATE `IPRange`
+        SET `IPRange`.`DataFine` = `NewDataInizio` - INTERVAL 1 SECOND -- I timestamp vengono tenuti leggermente differenti
+        WHERE
+            IpRangeCollidono(`NewInizio`, `NewFine`, `IPRange`.`Inizio`, `IPRange`.`Fine`)  AND
+            IpRangeValidoInData(`NewDataInizio`, `NewDataFine`, `IPRange`.`DataInizio`);
+    END IF;
+    
+    -- Inserisco essendo sicuro di aver mantenuto coerenza tra gli ip
+    INSERT INTO `IPRange` (`Inizio`, `Fine`, `DataInizio`, `DataFine`, `Paese`) VALUES
+    (`NewInizio`, `NewFine`, `NewDataInizio`, `NewDataFine`, `NewPaese`);
+END ; $$
+
+-- Inserisce solo se passa controlli
+
 CREATE PROCEDURE `IpRangeProvaInserire` (
     IN `NewInizio` INT UNSIGNED, IN `NewFine` INT UNSIGNED, 
     IN `NewDataInizio` TIMESTAMP, IN `NewDataFine` TIMESTAMP, 
@@ -1004,23 +975,15 @@ insert_body:BEGIN
         LEAVE insert_body;
     END IF;
 
-    -- Controllo sugli altri range
-    IF NOT `IpRangePossoInserire` (`NewInizio`, `NewFine`, `NewDataInizio`, `NewPaese`) THEN
-        SIGNAL SQLSTATE '01000'
-            SET MESSAGE_TEXT = 'Ip Range collide con altri esistenti!';
-        LEAVE insert_body;
-    END IF;
+    CALL `IpRangeInserisciFidato`(`NewInizio`, `NewFine`, `NewDataInizio`, `NewDataFine`, `NewPaese`, TRUE);
+END ; $$
 
-    -- Se il record inserito "rompe" uno gia' presente, con meno piorita' si fa scadere quello gia' presente
-    UPDATE `IPRange`
-    SET `IPRange`.`DataFine` = `NewDataInizio` - INTERVAL 1 SECOND -- I timestamp vengono tenuti leggermente differenti
-    WHERE
-        IpRangeCollidono(`NewInizio`, `NewFine`, `IPRange`.`Inizio`, `IPRange`.`Fine`)  AND
-        IpRangeValidoInData(`NewDataInizio`, `NewDataFine`, `IPRange`.`DataInizio`);
+-- Inserimenti di range validi dal momento stesso
 
-    -- Inserisco essendo sicuro di aver mantenuto coerenza tra gli ip
-    INSERT INTO `IPRange` (`Inizio`, `Fine`, `DataInizio`, `DataFine`, `Paese`) VALUES
-    (`NewInizio`, `NewFine`, `NewDataInizio`, `NewDataFine`, `NewPaese`);
+CREATE PROCEDURE `IpRangeInserisciAdessoFidato` (
+    IN `NewInizio` INT UNSIGNED, IN `NewFine` INT UNSIGNED, IN `NewPaese` CHAR(2), IN `InvalidaCollisioni` BOOLEAN)
+BEGIN
+    CALL `IpRangeInserisciFidato`(`NewInizio`, `NewFine`, CURRENT_TIMESTAMP, NULL, `NewPaese`, `InvalidaCollisioni`);
 END ; $$
 
 CREATE PROCEDURE `IpRangeProvaInserireAdesso` (
