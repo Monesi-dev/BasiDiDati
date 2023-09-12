@@ -190,9 +190,6 @@ ribilancia_body:BEGIN
             INNER JOIN `Server` S ON A.`Server` = S.`ID`
         WHERE A.`Classifica` <= ROUND(S.`MaxConnessioni` / 20); -- Per ogni Server sposto al massimo il 5% del suo MaxConnessioni
 
-
-        
-
 END ; $$
 
 CREATE EVENT `RibilanciamentoCaricoEvent`

@@ -179,7 +179,11 @@ RETURNS FLOAT
 DETERMINISTIC
 BEGIN
     IF Max IS NULL THEN
-        RETURN `CalcolaDelta`(0, Valore);
+        RETURN IF (
+            Valore < 0.0,
+            Valore * (-1),
+            2.0 * Valore
+        );
     END IF;
 
     RETURN IF (
