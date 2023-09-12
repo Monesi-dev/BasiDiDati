@@ -1,7 +1,7 @@
 USE `FilmSphere`;
 
 CREATE OR REPLACE VIEW `ServerConCarico` AS
-    SELECT S.*, (S.`CaricoAttuale` / S.`MaxConnessioni` AS "CaricoPercentuale")
+    SELECT S.*, (S.`CaricoAttuale` / S.`MaxConnessioni`) AS "CaricoPercentuale"
     FROM `Server` S;
 
 -- Materialized view che contiene i suggerimenti di Erogazioni da spostare e dove spostarle
@@ -12,20 +12,20 @@ CREATE TABLE IF NOT EXISTS `ModificaErogazioni`
 (
     -- Riferimenti a Erogazione
     `Server` INT NOT NULL, 
-    `Utente` VARCHAR(100) NOT NULL, 
+    `IP` INT UNSIGNED NOT NULL,
+    `InizioConnessione` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    `Utente` VARCHAR(100) NOT NULL,
     `Edizione` INT NOT NULL,
-    `TimeStamp` TIMESTAMP NOT NULL,
-    `InizioConnessione` TIMESTAMP NOT NULL,
-    `IP` INT NOT NULL,
+    `Timestamp` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
     -- Alternativa
     `Alternativa` INT NOT NULL, 
     `File` INT NOT NULL, 
     `Punteggio` FLOAT NOT NULL,
 
-    PRIMARY KEY(`Server`),
-    FOREIGN KEY (`TimeStamp`, `Edizione`, `Utente`, `IP`, `InizioConnessione`)
-        REFERENCES `Erogazione`(`TimeStamp`, `Edizione`, `Utente`, `IP`, `InizioConnessione`) 
+    PRIMARY KEY(`IP`, `InizioConnessione`, `Timestamp`, `Edizione`, `Utente`),
+    FOREIGN KEY (`IP`, `InizioConnessione`, `Timestamp`, `Edizione`, `Utente`)
+        REFERENCES `Erogazione`(`IP`, `InizioConnessione`, `Timestamp`, `Edizione`, `Utente`) 
             ON UPDATE CASCADE ON DELETE CASCADE,
 
     FOREIGN KEY(`Server`) REFERENCES `Server`(`ID`) ON UPDATE CASCADE ON DELETE CASCADE,
@@ -42,24 +42,19 @@ DELIMITER $$
 CREATE PROCEDURE `RibilanciamentoCarico` ()
 ribilancia_body:BEGIN
     -- Variables declaration
+    DECLARE `MaxCarichi` FLOAT DEFAULT 0.0;
     DECLARE `MediaCarichi` FLOAT DEFAULT NULL;
     DECLARE fetching BOOLEAN DEFAULT TRUE;
 
     -- Utente, Server e Visualizzazione
     DECLARE server_id INT DEFAULT NULL;
     DECLARE edizione_id INT DEFAULT NULL;
-    DECLARE ip_utente INT DEFAULT NULL;
+    DECLARE ip_utente INT UNSIGNED DEFAULT NULL;
     DECLARE paese_utente CHAR(2) DEFAULT '??';
     DECLARE codice_utente VARCHAR(100) DEFAULT NULL;
     DECLARE max_definiz BIGINT DEFAULT 0;
-    DECLARE timestamp_vis TIMESTAMP NULL DEFAULT NULL;
-    DECLARE timestamp_conn TIMESTAMP NULL DEFAULT NULL;
-
-    -- Caratteritiche del dispositivo utente
-    DECLARE audio_accettati VARCHAR(256) DEFAULT NULL;
-    DECLARE video_accettati VARCHAR(256) DEFAULT NULL;
-    DECLARE max_bitrate FLOAT DEFAULT NULL;
-    DECLARE max_risoluz BIGINT DEFAULT NULL;
+    DECLARE timestamp_vis TIMESTAMP DEFAULT NULL;
+    DECLARE timestamp_conn TIMESTAMP DEFAULT NULL;
 
     -- Server da escludere (perche' carichi)
     DECLARE server_da_escludere VARCHAR(32) DEFAULT NULL;
@@ -76,40 +71,24 @@ ribilancia_body:BEGIN
             SELECT E.*
             FROM `ServerPiuCarichi` S
                 INNER JOIN `Erogazione` E ON S.`ID` = E.`Server`
-            WHERE S.`InizioErogazione` <= CURRENT_TIMESTAMP - INTERVAL 29 MINUTE
+            WHERE TIMESTAMPDIFF(MINUTE, E.`InizioErogazione`, CURRENT_TIMESTAMP) > 29
         ), `ErogazioniNonAlTermine` AS (
             SELECT E.*, E.`InizioConnessione` AS "Inizio"
             FROM `ServerErogazioni` E
-                INNER JOIN `Edizione` Ed ON E.`Edizione` = E.`ID`
+                INNER JOIN `Edizione` Ed ON E.`Edizione` = Ed.`ID`
                 -- Calcolo quanto dovrebbe mancare al termine della visione e controllo che sia sotto i 10 min
-            HAVING Ed.`Lunghezza` - TIMESTAMPDIFF(SECOND, CURRENT_TIMESTAMP, E.`TimeStamp`) <= 600
+            -- WHERE Ed.`Lunghezza` - TIMESTAMPDIFF(SECOND, CURRENT_TIMESTAMP, E.`TimeStamp`) <= 600
         )
-        /*, `ErogazioneConnessione` AS (
-            SELECT E.*, 
-        )*/
-        /*
-        SELECT 
-            E.`Server`, E.`Edizione`, E.`IP`, 
-            E.`Utente`, A.`Definizione`,
-            C.ListaAudioEncodings, C.ListaVideoEncodings, 
-            C.MaxBitRate, C.MaxRisoluz,
-            GROUP_CONCAT(S.`ID` SEPARATOR ',') AS "ServerDaEscludere"
-        FROM `ErogazioniNonAlTermine` E
-            INNER JOIN `Connessione` C USING (`Utente`, `IP`, `Inizio`)
-            INNER JOIN `Utente` U ON U.`Codice` = C.`Utente`
-            INNER JOIN `Abbonamento` A ON A.`Tipo` = U.`Abbonamento`
-            CROSS JOIN `ServerPiuCarichi` S;
-        */
         SELECT 
             E.`Server`, E.`Edizione`, E.`IP`,
             E.`Utente`, A.`Definizione`,
             E.`TimeStamp`, E.`InizioConnessione`,
-            NULL, NULL, NULL, NULL,
-            GROUP_CONCAT(S.`ID` SEPARATOR ',') AS "ServerDaEscludere"
+            GROUP_CONCAT(DISTINCT S.`ID` SEPARATOR ',') AS "ServerDaEscludere"
         FROM `ErogazioniNonAlTermine` E
             INNER JOIN `Utente` U ON U.`Codice` = E.`Utente`
             INNER JOIN `Abbonamento` A ON A.`Tipo` = U.`Abbonamento`
-            CROSS JOIN `ServerPiuCarichi` S;
+            CROSS JOIN `ServerPiuCarichi` S
+        GROUP BY E.`Edizione`, E.`IP`, E.`Utente`, A.`Definizione`, E.`TimeStamp`, E.`InizioConnessione`;
     
     DECLARE CONTINUE HANDLER FOR NOT FOUND
         SET fetching = FALSE;
@@ -118,32 +97,27 @@ ribilancia_body:BEGIN
     (
         -- Riferimenti a Erogazione
         `Server` INT NOT NULL, 
-        `Utente` VARCHAR(100) NOT NULL, 
+        `IP` INT UNSIGNED NOT NULL,
+        `InizioConnessione` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        `Utente` VARCHAR(100) NOT NULL,
         `Edizione` INT NOT NULL,
-        `TimeStamp` TIMESTAMP NOT NULL,
-        `InizioConnessione` TIMESTAMP NOT NULL,
-        `IP` INT NOT NULL,
+        `Timestamp` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
         -- Alternativa
         `Alternativa` INT NOT NULL, 
         `File` INT NOT NULL, 
         `Punteggio` FLOAT NOT NULL,
 
-        PRIMARY KEY(`TimeStamp`, `Edizione`, `Utente`, `IP`, `InizioConnessione`),
-        FOREIGN KEY (`TimeStamp`, `Edizione`, `Utente`, `IP`, `InizioConnessione`)
-            REFERENCES `Erogazione`(`TimeStamp`, `Edizione`, `Utente`, `IP`, `InizioConnessione`) 
-                ON UPDATE CASCADE ON DELETE CASCADE,
-
-        FOREIGN KEY(`Server`) REFERENCES `Server`(`ID`) ON UPDATE CASCADE ON DELETE CASCADE,
-        FOREIGN KEY(`Alternativa`) REFERENCES `Server`(`ID`) ON UPDATE CASCADE ON DELETE CASCADE,
-        FOREIGN KEY(`File`) REFERENCES `File`(`ID`) ON UPDATE CASCADE ON DELETE CASCADE
+        PRIMARY KEY(`IP`, `InizioConnessione`, `Timestamp`, `Edizione`, `Utente`)
     ) Engine=InnoDB;
 
     -- Actual operations
-    SELECT AVG(`CaricoPercentuale`) INTO `MediaCarichi`
+    SELECT MAX(`CaricoPercentuale`), AVG(`CaricoPercentuale`) INTO `MaxCarichi`, `MediaCarichi`
     FROM `ServerConCarico`;
 
-    IF `MediaCarichi` IS NULL OR `MediaCarichi` < 0.7 THEN
+    IF `MediaCarichi` IS NULL OR `MaxCarichi` < 0.7 THEN
+        SIGNAL SQLSTATE '01000'
+            SET MESSAGE_TEXT = "Non c'è bisogno di ribilanciare le Erogazioni";
         LEAVE ribilancia_body;
     END IF;
 
@@ -156,8 +130,6 @@ ribilancia_body:BEGIN
             server_id, edizione_id, 
             ip_utente, codice_utente, max_definiz,
             timestamp_vis, timestamp_conn,
-            audio_accettati, video_accettati, 
-            max_bitrate, max_risoluz,
             server_da_escludere;
         
         IF NOT fetching THEN
@@ -167,19 +139,22 @@ ribilancia_body:BEGIN
         SET paese_utente = Ip2Paese(ip_utente);
 
         CALL `TrovaMigliorServer`(
-            id_edizione, paese_utente, max_definiz, 
-            max_bitrate, max_risoluz,
-            video_accettati, audio_accettati,
+            edizione_id, paese_utente, max_definiz, 
+            0, 0,
+            NULL, NULL,
             server_da_escludere,
             @FileID, @ServerID, @Punteggio);
 
-        INSERT INTO `AlternativaErogazioni` (
-            `Server`, `Utente`, `Edizione`,
-            `TimeStamp`, `InizioConnessione`, `IP`,
-            `Alternativa`, `File`, `Punteggio`) VALUES (
-                server_id, codice_utente, edizione_id,
-                timestamp_vis, timestamp_conn, ip_utente,
-                @ServerID, @FileID, @Punteggio);
+        IF @FileID IS NOT NULL AND @ServerID IS NOT NULL THEN
+            INSERT INTO `AlternativaErogazioni` (
+                `Server`, `Utente`, `Edizione`,
+                `Timestamp`, `InizioConnessione`, `IP`,
+                `Alternativa`, `File`, `Punteggio`) VALUES (
+                    server_id, codice_utente, edizione_id,
+                    timestamp_vis, timestamp_conn, ip_utente,
+                    @ServerID, @FileID, @Punteggio);
+        END IF;
+        
     END LOOP;
 
     CLOSE cur;
@@ -190,12 +165,18 @@ ribilancia_body:BEGIN
 
     IF (SELECT COUNT(*) FROM `AlternativaErogazioni`) = 0 THEN
         -- Non ci sono opzioni, esco
+        SIGNAL SQLSTATE '01000'
+            SET MESSAGE_TEXT = "Non ci sono opzioni di ribilanciamento";
         LEAVE ribilancia_body;
     END IF;
 
-    INSERT INTO `ModificaErogazioni`
+    INSERT INTO `ModificaErogazioni`(
+                `Server`, `Utente`, `Edizione`,
+                `Timestamp`, `InizioConnessione`, `IP`,
+                `Alternativa`, `File`, `Punteggio`)
+                
         WITH `ConClassifica` AS (
-            SELECT A.*, RANK(
+            SELECT A.*, RANK() OVER (
                 PARTITION BY A.`Server`
                 ORDER BY A.`Punteggio` ASC
             ) Classifica
@@ -203,11 +184,14 @@ ribilancia_body:BEGIN
         ) 
         SELECT 
             A.`Server`, A.`Utente`, A.`Edizione`, 
-            A.`TimeStamp`, A.`InizioConnessione`,
-            A.`IP`, A.`Alternativa`, A.`File`, A.`Punteggio`
+            A.`Timestamp`, A.`InizioConnessione`, A.`IP`, 
+            A.`Alternativa`, A.`File`, A.`Punteggio`
         FROM `ConClassifica` A
             INNER JOIN `Server` S ON A.`Server` = S.`ID`
-        WHERE A.`Classifica` <= FLOOR(S.`MaxConnessioni` / 20); -- Per ogni Server sposto al massimo il 5% del suo MaxConnessioni
+        WHERE A.`Classifica` <= ROUND(S.`MaxConnessioni` / 20); -- Per ogni Server sposto al massimo il 5% del suo MaxConnessioni
+
+
+        
 
 END ; $$
 

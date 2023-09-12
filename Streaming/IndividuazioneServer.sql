@@ -30,12 +30,6 @@ CREATE PROCEDURE `MigliorServer` (
     DECLARE paese_utente CHAR(2) DEFAULT '??';
     DECLARE abbonamento_utente VARCHAR(50) DEFAULT NULL;
     DECLARE max_definizione BIGINT DEFAULT NULL;
-    /*
-    DECLARE wRis FLOAT DEFAULT 5.0;
-    DECLARE wRate FLOAT DEFAULT 3.0;
-    DECLARE wPos FLOAT DEFAULT 12.0;
-    DECLARE wCarico FLOAT DEFAULT 10.0;
-    */
 
     IF id_utente IS NULL OR id_edizione IS NULL THEN
         SIGNAL SQLSTATE '45000'
@@ -44,7 +38,7 @@ CREATE PROCEDURE `MigliorServer` (
 
 
     SELECT A.`Tipo`, A.`Definizione`
-        INTO abbonamento_utente, MaxRisoluz
+        INTO abbonamento_utente, max_definizione
     FROM `Abbonamento` A
         INNER JOIN `Utente` U ON `U`.`Abbonamento` = A.`Tipo`
     WHERE U.`Codice` = id_utente;
@@ -83,6 +77,7 @@ CREATE PROCEDURE `MigliorServer` (
         ListaVideoEncodings, ListaAudioEncodings, NULL, @File, @Server, @Score);
     SET FileID = @File;
     SET ServerID = @Server;
+    -- SELECT @File, @Server, @Score, paese_utente, max_definizione;
     -- @Score non viene restituito
 END $$
 
@@ -117,11 +112,11 @@ CREATE PROCEDURE `TrovaMigliorServer` (
 
     -- Prima di calcolare il Server migliore individuo le caratteristiche che deve avere il File
     
-    SET max_definizione = LEAST(MaxRisoluz, MaxRisoluzAbbonamento);
+    SET max_definizione = IFNULL(
+        LEAST(MaxRisoluz, IFNULL(MaxRisoluzAbbonamento, MaxRisoluz)), 
+        0);
 
-    IF max_definizione IS NULL OR max_definizione = 0 THEN
-        SET max_definizione = MaxRisoluz;
-    END IF;
+    -- SELECT max_definizione, MaxBitRate, ListaAudioEncodings, ListaVideoEncodings, ServerDaEscludere, paese_utente;
 
     WITH `FileDisponibili` AS (
         SELECT 
@@ -137,11 +132,11 @@ CREATE PROCEDURE `TrovaMigliorServer` (
     ), `ServerDisponibili` AS (
         SELECT S.`ID`, S.`CaricoAttuale`, S.`MaxConnessioni`
         FROM `Server` S
-        WHERE ServerDaEscludere IS NULL OR NOT StrListContains(ServerDaEscludere, S.`ID`)
+        WHERE NOT StrListContains(ServerDaEscludere, S.`ID`)
     ), `FileServerScore` AS (
         SELECT 
             F.`ID`,
-            D.`Server`,
+            P.`Server`,
             MathMap(F.`DeltaRis`, 0.0, 16384, 0, wRis) AS "ScoreRis",
             MathMap(F.`DeltaRate`, 0.0, 1.4 * 1024 * 1024 * 1024, 0, wRate) AS "ScoreRate",
             MathMap(D.`ValoreDistanza`, 0.0, 40000, 0, wPos) AS "ScoreDistanza",
@@ -204,6 +199,10 @@ BEGIN
     DECLARE PagliaioRidotto VARCHAR(256);
     SET PagliaioRidotto = Pagliaio;
 
+    IF Pagliaio IS NULL OR LENGTH(Pagliaio) = 0 THEN
+        RETURN FALSE;
+    END IF;
+
     WHILE PagliaioRidotto <> '' DO
 
         IF TRIM(LOWER(SUBSTRING_INDEX(PagliaioRidotto, ',', 1))) = TRIM(LOWER(`Ago`)) THEN
@@ -224,7 +223,3 @@ BEGIN
 END $$
 
 DELIMITER ;
-
-
--- CALL MigliorServer('adriabp5w', 11, 62364199, 2000000, 16384, 'MPEG-4', 'ALAC, H', @file_id, @server_id);
--- SELECT @file_id, @server_id;
