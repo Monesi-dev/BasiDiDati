@@ -1006,3 +1006,48 @@ BEGIN
 END ; $$
 
 DELIMITER ;
+
+DROP TRIGGER IF EXISTS CriticaDataValida;
+DELIMITER $$
+CREATE TRIGGER IF NOT EXISTS CriticaDataValida
+BEFORE INSERT ON Critica FOR EACH ROW
+BEGIN
+
+    DECLARE anno_film INT;
+
+    SET anno_film = (
+        SELECT Anno
+        FROM Film
+        WHERE ID = NEW.Film
+    );
+
+    IF anno_film > YEAR(NEW.Data) THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Data della Critica non Valida';
+    END IF;
+
+END $$
+DELIMITER ;
+
+
+DROP TRIGGER IF EXISTS AnnoEdizioneValido;
+DELIMITER $$
+CREATE TRIGGER IF NOT EXISTS AnnoEdizioneValido
+BEFORE INSERT ON Edizione FOR EACH ROW
+BEGIN
+
+    DECLARE anno_film INT;
+
+    SET anno_film = (
+        SELECT Film.Anno
+        FROM Film
+        WHERE ID = NEW.Film
+    );
+
+    IF anno_film > NEW.Anno THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Anno dell\'Edizione non Valido';
+    END IF;
+
+END $$
+DELIMITER ;

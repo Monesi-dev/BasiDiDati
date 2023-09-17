@@ -143,10 +143,10 @@ CREATE TABLE IF NOT EXISTS `Erogazione` (
     FOREIGN KEY (`IP`, `InizioConnessione`, `Timestamp`, `Edizione`, `Utente`)
         REFERENCES `Visualizzazione`(`IP`, `InizioConnessione`, `Timestamp`, `Edizione`, `Utente`) 
         ON UPDATE CASCADE ON DELETE CASCADE,
-    FOREIGN KEY (`Server`) REFERENCES `Server`(`ID`) ON UPDATE CASCADE ON DELETE CASCADE,
+    FOREIGN KEY (`Server`) REFERENCES `Server`(`ID`) ON UPDATE CASCADE ON DELETE CASCADE
 
     -- Vincoli di dominio
-    CHECK (`Timestamp` BETWEEN `InizioConnessione` AND `InizioErogazione`)
+    -- CHECK (`Timestamp` BETWEEN `InizioConnessione` AND `InizioErogazione`)
 ) Engine=InnoDB;
 
 DROP PROCEDURE IF EXISTS AggiungiErogazioneServer;

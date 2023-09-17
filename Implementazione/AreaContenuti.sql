@@ -127,3 +127,25 @@ CREATE TABLE IF NOT EXISTS `GenereFilm` (
   FOREIGN KEY(`Genere`) REFERENCES `Genere` (`Nome`)
     ON UPDATE CASCADE ON DELETE CASCADE 
 ) Engine = InnoDB;
+
+DROP TRIGGER IF EXISTS CriticaDataValida;
+DELIMITER $$
+CREATE TRIGGER IF NOT EXISTS CriticaDataValida
+BEFORE INSERT ON Critica FOR EACH ROW
+BEGIN
+
+    DECLARE anno_film INT;
+
+    SET anno_film = (
+        SELECT Anno
+        FROM Film
+        WHERE ID = NEW.Film
+    );
+
+    IF anno_film > YEAR(NEW.Data) THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Data della Critica non Valida';
+    END IF;
+
+END $$
+DELIMITER ;

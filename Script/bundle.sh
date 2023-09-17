@@ -1,6 +1,6 @@
 #!/bin/bash
 
-files=("AreaContenuti.sql" "AreaFormato.sql" "AreaUtenti.sql" "AreaStreaming.sql")
+files=("AreaContenuti.sql" "AreaFormato.sql" "AreaStreaming.sql" "AreaUtenti.sql" )
 echo '' | cat > Bundle.sql
 
 for value in "${files[@]}"
