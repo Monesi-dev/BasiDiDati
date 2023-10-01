@@ -34,6 +34,5 @@ BEGIN
     ELSE
         SELECT lista_generi, 'Abilitato' AS Abilitazione;
     END IF;
-END
-//
+END //
 DELIMITER ;

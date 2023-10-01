@@ -15,7 +15,7 @@ BEGIN
 
     SET sum_v := (
         SELECT
-            SUM(F.MediaRecensioni)
+            SUM(IFNULL(F.MediaRecensioni, 0))
         FROM Artista A
         INNER JOIN Recitazione R
             ON R.NomeAttore = A.Nome AND R.CognomeAttore = A.Cognome
@@ -42,7 +42,7 @@ BEGIN
         WHERE NomeArtista = Nome AND CognomeArtista = CognomeArtista
     );
 
-    RETURN sum_v + sum_p * 5 + n * 100.0;
+    RETURN sum_v + sum_p * 5 + n * 50.0;
 
 END //
 DELIMITER ;
@@ -95,7 +95,7 @@ BEGIN
 
     SET sum_v := (
         SELECT
-            SUM(MediaRecensioni)
+            SUM(IFNULL(MediaRecensioni, 0))
         FROM Film
         WHERE NomeRegista = Nome AND CognomeRegista = Cognome
     );
@@ -116,7 +116,7 @@ BEGIN
         WHERE NomeArtista = Nome AND CognomeArtista = CognomeArtista
     );
 
-    RETURN sum_v + sum_p * 5 + n * 100.0;
+    RETURN sum_v + sum_p * 5 + n * 50.0;
 
 END
 //

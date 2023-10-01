@@ -116,6 +116,7 @@ CREATE TABLE IF NOT EXISTS Restrizione (
 
 DROP TRIGGER IF EXISTS `InserimentoFile`;
 DROP TRIGGER IF EXISTS `ModificaFile`;
+
 DELIMITER $$
 
 CREATE TRIGGER `InserimentoFile`
@@ -162,5 +163,26 @@ BEGIN
             SET MESSAGE_TEXT = 'BitRate non valido!';
     END IF;
 END ; $$
+
+DROP TRIGGER IF EXISTS `AnnoEdizioneValido` $$
+
+CREATE TRIGGER `AnnoEdizioneValido`
+BEFORE INSERT ON `Edizione`
+FOR EACH ROW
+BEGIN
+
+    DECLARE anno_film YEAR;
+
+    SELECT F.`Anno` INTO anno_film
+    FROM `Film` F
+    WHERE F.`ID` = NEW.`Film`;
+
+    IF anno_film > YEAR(NEW.`Anno`) THEN
+        SIGNAL SQLSTATE '45000'
+            SET MESSAGE_TEXT = 'Anno dell\'Edizione non Valido';
+    END IF;
+
+END $$
+
 
 DELIMITER ;

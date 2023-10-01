@@ -15,70 +15,64 @@ BEGIN
     --    per un numero che scala in maniera decrescente in base al ValoreDistanza tra Paese e Server
     -- 4) Si restituiscono le prime X coppie Server-File con somma maggiore per le quali non esiste gi`a un P.o.P.
     WITH
-        UtentePaeseVolte AS (
+        `UtentePaeseVolte` AS (
             SELECT
-                Utente,
-                Paese,
-                COUNT(*) AS Volte
-            FROM (
-                SELECT
-                    Utente,
-                    Ip2PaeseStorico(IP, InizioConnessione) AS Paese
-                FROM Visualizzazione
-            ) AS T
-            GROUP BY Utente, Paese
+                V.`Utente`,
+                IFNULL (R.`Paese`, '??') AS `Paese`,
+                COUNT(*) AS `Volte`
+            FROM `Visualizzazione` V
+            
+            LEFT OUTER JOIN `IPRange` R ON 
+                (V.`IP` BETWEEN R.`Inizio` AND R.`Fine`) AND 
+                (V.`InizioConnessione` BETWEEN R.`DataInizio` AND IFNULL(R.`DataFine`, CURRENT_TIMESTAMP))
+            GROUP BY `Utente`, `Paese`
         ),
-        UtentePaesePiuFrequente AS (
-            SELECT
-                Utente,
-                Paese
-            FROM UtentePaeseVolte UPV
-            WHERE UPV.Volte = (
-                SELECT MAX(UPV2.Volte)
-                FROM UtentePaeseVolte UPV2
-                WHERE UPV2.Utente = UPV.Utente
+        `UtentePaesePiuFrequente` AS (
+            SELECT UPV.*
+            FROM `UtentePaeseVolte` UPV
+            WHERE UPV.`Volte` >= ALL(
+                SELECT UPV2.`Volte`
+                FROM `UtentePaeseVolte` UPV2
+                WHERE UPV2.`Utente` = UPV.`Utente`
             )
         ),
-        RankingPaeseServer AS (
-            SELECT
-                Server,
-                Paese,
-                RANK() OVER(PARTITION BY Paese ORDER BY ValoreDistanza) AS rk
-            FROM DistanzaPrecalcolata
+        `ServerTargetPerPaese` AS (
+            SELECT `Server`, `Paese`, `ValoreDistanza`,
+                RANK() OVER(
+                    PARTITION BY `Paese` 
+                    ORDER BY `ValoreDistanza`) AS rk
+            FROM `DistanzaPrecalcolata`
+            -- WHERE `Paese` <> '??'
         ),
-        ServerTargetPerPaese AS (
+        `UtentePaeseServer` AS (
             SELECT
-                Server,
-                Paese
-            FROM RankingPaeseServer
+                UP.`Utente`,
+                UP.`Paese`,
+                S.`Server`,
+                S.`ValoreDistanza`
+            FROM `UtentePaesePiuFrequente` UP
+                INNER JOIN `ServerTargetPerPaese` S USING(`Paese`)
             WHERE rk <= N
-        ),
-        UtentePaeseServer AS (
-            SELECT
-                UP.Utente,
-                UP.Paese,
-                SP.Server,
-                DP.ValoreDistanza
-            FROM UtentePaesePiuFrequente UP
-            INNER JOIN ServerTargetPerPaese SP
-                USING(Paese)
-            INNER JOIN DistanzaPrecalcolata DP
-                ON DP.Server = SP.Server AND DP.Paese = UP.Paese
         ),
 
         -- 2) Per ogni coppia Utente, Paese si considerano gli M File con probabilità maggiore di essere guardati, ciascuno con la probabilità di essere guardato
-        FilmRatingUtente AS (
+        `FilmRatingUtente` AS (
             SELECT
-                F.ID,
-                U.Codice,
-                RatingUtente(F.ID, U.Codice) AS Rating
-            FROM Film F
-            NATURAL JOIN Utente U
+                F.`ID`,
+                U.`Codice`,
+                RatingUtente(F.`ID`, U.`Codice`) AS Rating,
+                RANK() OVER(
+                    PARTITION BY U.`Codice` 
+                    ORDER BY Rating DESC
+                ) AS rk
+            FROM `Film` F
+                CROSS JOIN `Utente` U
+            HAVING Rating > 0
         ),
-        10FilmUtente AS (
+        `10FilmUtente` AS (
             SELECT
-                ID AS Film,
-                Codice AS Utente,
+                `ID` AS Film,
+                `Codice` AS Utente,
                 (CASE
                     WHEN rk = 1 THEN 30.0
                     WHEN rk = 2 THEN 22.0
@@ -91,86 +85,65 @@ BEGIN
                     WHEN rk = 9 THEN 3.0
                     WHEN rk = 10 THEN 2.0
                 END) AS Probabilita
-            FROM (
-                SELECT
-                    ID,
-                    Codice,
-                    RANK() OVER(PARTITION BY Codice ORDER BY Rating DESC ) AS rk
-                FROM FilmRatingUtente
-            ) AS T
+            FROM `FilmRatingUtente`
             WHERE rk <= 10
         ),
-        FilmFile AS (
+        `FilmFileAssociati` AS (
             SELECT
-                F.ID AS Film,
-                FI.ID AS File,
-                F2FI.N AS NumeroFile
-            FROM Film AS F
-            INNER JOIN Edizione E
-                ON E.Film = F.ID
-            INNER JOIN File FI
-                ON FI.Edizione = E.ID
-            INNER JOIN (
-                -- Tabella avente Film e numero di File ad esso associati
-                SELECT
-                    F1.ID AS Film,
-                    COUNT(*) AS N
-                FROM Film AS F1
-                INNER JOIN Edizione E1
-                    ON E1.Film = F1.ID
-                INNER JOIN File FI1
-                    ON FI1.Edizione = E1.ID
-                GROUP BY F1.ID
-            ) AS F2FI
-                ON F2FI.Film = F.ID
-
+                F.`ID` AS Film,
+                FI.`ID` AS File
+            FROM `Film` F
+                INNER JOIN `Edizione` E ON E.`Film` = F.ID
+                INNER JOIN `File` FI ON FI.`Edizione` = E.ID
         ),
-        FileUtente AS (
+        `FilmFile` AS (
             SELECT
-                Utente,
-                File,
-                Probabilita / NumeroFile AS Probabilita
-            FROM 10FilmUtente
-            NATURAL JOIN FilmFile
+                F.*,
+                F1.`NumeroFile`
+            FROM `FilmFileAssociati` F
+                INNER JOIN (
+                    -- Tabella avente Film e numero di File ad esso associati
+                    SELECT
+                        F2.`Film`,
+                        COUNT(*) AS NumeroFile
+                    FROM `FilmFileAssociati` F2
+                    GROUP BY F2.`Film`
+                ) AS F1 USING (`Film`)
+            WHERE F1.`NumeroFile` > 0
         ),
-        MFilePerUtente AS (
+        `FileUtente` AS (
             SELECT
-                Utente,
-                File,
-                Probabilita
-            FROM (
-                SELECT
-                    *,
-                    RANK() OVER(PARTITION BY Utente ORDER BY Probabilita DESC) AS rk
-                FROM FileUtente
-            ) AS T
+                U.`Utente`,
+                F.`File`,
+                U.`Probabilita` / F.`NumeroFile` AS Probabilita,
+                RANK() OVER(
+                    PARTITION BY U.`Utente`
+                    ORDER BY U.`Probabilita` / F.`NumeroFile` DESC) AS rk
+            FROM `10FilmUtente` U
+                NATURAL JOIN `FilmFile` F
+        ),
+        `ServerFile` AS (
+            SELECT
+                `File`,
+                `Server`,
+                SUM(`Probabilita` * (1 + 1 / `ValoreDistanza`)) AS Importanza   -- MODIFICA VALORI PER QUESTA ESPRESSIONE
+            FROM `FileUtente` FU
+                INNER JOIN `UtentePaeseServer` SU USING(`Utente`)
             WHERE rk <= M
-        ),
-
-        ServerFile AS (
-            SELECT
-                File,
-                Server,
-                SUM(Probabilita * (1 + 1 / ValoreDistanza)) AS Importanza   -- MODIFICA VALORI PER QUESTA ESPRESSIONE
-            FROM MFilePerUtente FU
-            INNER JOIN UtentePaeseServer SU
-                USING(Utente)
-            GROUP BY File, Server
+            GROUP BY FU.`File`, SU.`Server`
         )
     SELECT
-        File,
-        Server
-    FROM ServerFile SF
+        `File`,
+        `Server`
+    FROM `ServerFile` SF
     WHERE NOT EXISTS (
         SELECT *
-        FROM PoP
-        WHERE PoP.Server = SF.Server AND PoP.File = SF.File
+        FROM `PoP`
+        WHERE `PoP`.`Server` = SF.`Server` AND PoP.`File` = SF.`File`
     )
     ORDER BY Importanza DESC
     LIMIT X;
 
+END //
 
-
-
-END
-//
+DELIMITER ;

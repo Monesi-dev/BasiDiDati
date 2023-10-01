@@ -243,3 +243,43 @@ DO
 $$
 
 DELIMITER ;
+
+DROP EVENT IF EXISTS `GestioneVisualizzazioni`;
+CREATE EVENT `GestioneVisualizzazioni`
+ON SCHEDULE EVERY 1 DAY
+COMMENT 'Elimina le visualizzazioni scadute'
+DO
+    DELETE 
+	FROM `Visualizzazione`
+    WHERE `InizioConnessione` + INTERVAL 1 MONTH < CURRENT_DATE();
+
+DROP EVENT IF EXISTS `GestioneConnessioni`;
+CREATE EVENT `GestioneConnessioni`
+ON SCHEDULE EVERY 1 DAY
+COMMENT 'Elimina le connessioni scadute'
+DO
+    DELETE 
+	FROM `Connessione`
+    WHERE `Inizio` + INTERVAL 1 MONTH < CURRENT_DATE();
+
+DROP EVENT IF EXISTS `GestioneErogazioni`;
+CREATE EVENT `GestioneErogazioni`
+ON SCHEDULE EVERY 1 HOUR
+COMMENT 'Elimina le erogazioni scadute non precedentemente rimosse, evita inconsistenze'
+DO
+    DELETE
+        E.*
+    FROM `Erogazione` E
+    	INNER JOIN `Edizione` Ed ON Ed.ID = E.`Edizione`
+    WHERE 
+		Ed.`Lunghezza` < TIMESTAMPDIFF(SECOND, E.`TimeStamp`, CURRENT_TIMESTAMP) + 1800 AND -- Visualizzazioni che dovrebbero essere terminate da almeno 30 minuti
+		TIMESTAMPDIFF(MINUTE, E.`InizioErogazione`, CURRENT_TIMESTAMP) > 29; -- Erogazioni che non sono iniziate negli ultimi 30'
+
+DROP EVENT IF EXISTS `GestioneFattura`;
+CREATE EVENT `GestioneFattura`
+ON SCHEDULE EVERY 1 MONTH
+COMMENT 'Elimina le fatture scadute'
+DO
+    DELETE 
+	FROM `Fattura`
+    WHERE `DataPagamento` + INTERVAL 1 YEAR < CURRENT_DATE();

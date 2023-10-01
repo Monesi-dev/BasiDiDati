@@ -2,329 +2,151 @@ USE `FilmSphere`;
 
 
 DROP FUNCTION IF EXISTS `RatingUtente`;
+
 DELIMITER //
+
 CREATE FUNCTION `RatingUtente`(
     id_film INT,
     id_utente VARCHAR(100)
 )
-RETURNS FLOAT NOT DETERMINISTIC
-    READS SQL DATA
+RETURNS FLOAT 
+NOT DETERMINISTIC
+READS SQL DATA
 BEGIN
+    DECLARE out_value FLOAT DEFAULT 0.0;
 
-    DECLARE G1 VARCHAR(50);
-    DECLARE G2 VARCHAR(50);
-    DECLARE A1_Nome VARCHAR(50);
-    DECLARE A1_Cognome VARCHAR(50);
-    DECLARE A2_Nome VARCHAR(50);
-    DECLARE A2_Cognome VARCHAR(50);
-    DECLARE A3_Nome VARCHAR(50);
-    DECLARE A3_Cognome VARCHAR(50);
-    DECLARE L1 VARCHAR(50);
-    DECLARE L2 VARCHAR(50);
-    DECLARE R_Nome VARCHAR(50);
-    DECLARE R_Cognome VARCHAR(50);
-    DECLARE RA INT;
-
-    DECLARE G1_b TINYINT;
-    DECLARE G2_b TINYINT;
-    DECLARE A1_b TINYINT;
-    DECLARE A2_b TINYINT;
-    DECLARE A3_b TINYINT;
-    DECLARE L1_b TINYINT;
-    DECLARE L2_b TINYINT;
-    DECLARE R_b TINYINT;
-    DECLARE RA_b TINYINT;
-
-    -- ------------------------
-    -- Determino i Preferiti
-    -- ------------------------
-
-    -- L'idea e' di creare delle classifica come Temporary Table
-    -- per poi andare a selezionare l'i-esimo preferito
-
-    DROP TEMPORARY TABLE IF EXISTS GeneriClassifica;
-    CREATE TEMPORARY TABLE IF NOT EXISTS GeneriClassifica
-    WITH
-        GenereVisualizzazioni AS (
-            SELECT
-                Genere,
-                COUNT(*) AS N
-            FROM Visualizzazione V
-            INNER JOIN Edizione E
-                ON E.ID = V.Edizione
-            INNER JOIN GenereFilm GF
-                ON GF.Film = E.Film
-            WHERE V.Utente = id_utente
-            GROUP BY Genere
-        )
-    SELECT
-        Genere,
-        RANK() OVER (ORDER BY N DESC, Genere) as Rk
-    FROM GenereVisualizzazioni;
-
-    SET G1 := (
+    WITH `VisualizzazioniUtente` AS (
+        SELECT E.`Film`, V.`Edizione`, V.`Utente`, E.`RapportoAspetto`, F.`NomeRegista`, F.`CognomeRegista`
+        FROM `Visualizzazione` V
+            INNER JOIN `Edizione` E ON E.ID = V.`Edizione`
+            INNER JOIN `Film` F ON F.`ID` = E.`Film`
+        WHERE V.`Utente` = id_utente
+    ), 
+    
+    `GenereVisualizzazioni` AS (
         SELECT
-            Genere
-        FROM GeneriClassifica
-        WHERE rk = 1
-    );
-
-    SET G2 := (
+            GF.`Genere`,
+            COUNT(*),
+            RANK() OVER (
+                ORDER BY COUNT(*) DESC, GF.`Genere`
+            ) AS rk
+        FROM `VisualizzazioniUtente` V
+            INNER JOIN `GenereFilm` GF USING(`Film`)
+        GROUP BY GF.`Genere`
+    ), `PunteggiGeneri` AS (
+        SELECT (3 - G.`rk`) AS Punteggio
+        FROM `GenereVisualizzazioni` G
+            INNER JOIN `GenereFilm` GF USING(`Genere`)
+        WHERE GF.`Film` = id_film AND G.`rk` <= 2
+        LIMIT 2
+    ), 
+    
+    `AttoriVisualizzazioni` AS (
         SELECT
-            Genere
-        FROM GeneriClassifica
-        WHERE rk = 2
-    );
-
-
-    DROP TEMPORARY TABLE IF EXISTS AttoriClassifica;
-    CREATE TEMPORARY TABLE IF NOT EXISTS AttoriClassifica
-        WITH
-            AttoriVisualizzazioni AS (
-                SELECT
-                    R.NomeAttore,
-                    R.CognomeAttore,
-                    COUNT(*) AS N
-                FROM Visualizzazione V
-                INNER JOIN Edizione E
-                    ON E.ID = V.Edizione
-                INNER JOIN Recitazione R
-                    ON R.Film = E.Film
-                WHERE V.Utente = id_utente
-                GROUP BY R.NomeAttore, R.CognomeAttore
-            )
+            R.`NomeAttore`,
+            R.`CognomeAttore`,
+            COUNT(*),
+            RANK() OVER (
+                ORDER BY COUNT(*) DESC, R.`NomeAttore`, R.`CognomeAttore`
+            ) AS rk
+        FROM `VisualizzazioniUtente` V
+            INNER JOIN `Recitazione` R USING(`Film`)
+        GROUP BY R.`NomeAttore`, R.`CognomeAttore`
+    ), `PunteggiAttori` AS (
+        SELECT (CASE
+            WHEN A.`rk` = 1 THEN 1.5
+            WHEN A.`rk` = 2 THEN 1.0
+            WHEN A.`rk` = 3 THEN 0.5
+            END) AS Punteggio
+        FROM `AttoriVisualizzazioni` A
+            INNER JOIN `Recitazione` R USING(`NomeAttore`, `CognomeAttore`)
+        WHERE R.`Film` = id_film AND A.`rk` <= 3
+        LIMIT 3
+    ),
+    
+    `LinguaVisualizzazioni` AS (
         SELECT
-            NomeAttore, CognomeAttore,
-            RANK() OVER(ORDER BY N DESC, NomeAttore, CognomeAttore) AS rk
-        FROM AttoriVisualizzazioni;
-
-    SET A1_Nome := (
+            D.`Lingua`,
+            COUNT(*),
+            RANK() OVER(
+                ORDER BY COUNT(*) DESC
+            ) AS rk
+        FROM `VisualizzazioniUtente` V
+            INNER JOIN `File` F USING (`Edizione`)
+            INNER JOIN `Doppiaggio` D ON D.`File` = F.`ID`
+        GROUP BY D.`Lingua`
+    ), `PunteggiLingue` AS (
+        SELECT 1 AS Punteggio
+        FROM `LinguaVisualizzazioni` L
+            INNER JOIN `Doppiaggio` D USING(`Lingua`)
+            INNER JOIN `File` F ON F.`ID` = D.`File`
+            INNER JOIN `Edizione` E ON E.`ID` = F.`Edizione`
+        WHERE E.`Film` = id_film AND L.`rk` <= 2
+        LIMIT 2
+    ),
+    
+    `RegistaVisualizzazioni` AS (
         SELECT
-            NomeAttore
-        FROM AttoriClassifica
-        WHERE rk = 1
-    );
-
-    SET A1_Cognome := (
-        SELECT
-            CognomeAttore
-        FROM AttoriClassifica
-        WHERE rk = 1
-    );
-
-    SET A2_Nome := (
-        SELECT
-            NomeAttore
-        FROM AttoriClassifica
-        WHERE rk = 2
-    );
-
-    SET A2_Cognome := (
-        SELECT
-            CognomeAttore
-        FROM AttoriClassifica
-        WHERE rk = 2
-    );
-
-    SET A3_Nome := (
-        SELECT
-            NomeAttore
-        FROM AttoriClassifica
-        WHERE rk = 3
-    );
-
-    SET A3_Cognome := (
-        SELECT
-            CognomeAttore
-        FROM AttoriClassifica
-        WHERE rk = 3
-    );
-
-    DROP TEMPORARY TABLE IF EXISTS LinguaClassifica;
-    CREATE TEMPORARY TABLE IF NOT EXISTS LinguaClassifica
-        WITH
-            LinguaVisualizzazioni AS (
-                SELECT
-                    D.Lingua,
-                    COUNT(*) AS N
-                FROM Visualizzazione V
-                INNER JOIN File F
-                    ON F.Edizione = V.Edizione
-                INNER JOIN Doppiaggio D
-                    ON D.File = F.ID
-                WHERE V.Utente = id_utente
-                GROUP BY D.Lingua
-            )
-        SELECT
-            Lingua,
-            RANK() OVER(ORDER BY N DESC, Lingua) AS rk
-        FROM LinguaVisualizzazioni;
-
-    SET L1 := (
-        SELECT
-            Lingua
-        FROM LinguaClassifica
-        WHERE rk = 1
-    );
-
-    SET L2 := (
-        SELECT
-            Lingua
-        FROM LinguaClassifica
-        WHERE rk = 2
-    );
-
-    DROP TEMPORARY TABLE IF EXISTS RegistaUtente;
-    CREATE TEMPORARY TABLE IF NOT EXISTS RegistaUtente
-        WITH
-            RegistaVisualizzazioni AS (
-                SELECT
-                    F.NomeRegista,
-                    F.CognomeRegista,
-                    COUNT(*) AS N
-                FROM Visualizzazione V
-                INNER JOIN Edizione E
-                    ON V.Edizione = E.ID
-                INNER JOIN Film F
-                    ON F.ID = E.Film
-                WHERE V.Utente = id_utente
-                GROUP BY F.NomeRegista, F.CognomeRegista
-            )
-        SELECT
-            NomeRegista,
-            CognomeRegista
-        FROM RegistaVisualizzazioni
-        ORDER BY N DESC, CognomeRegista, NomeRegista
-        LIMIT 1;
-
-    SET R_Nome := (
-        SELECT NomeRegista
-        FROM RegistaUtente
-    );
-
-    SET R_Cognome := (
-        SELECT NomeRegista
-        FROM RegistaUtente
-    );
-
-    SET RA := (
-        WITH
-            RapportoAspettoVisualizzazioni AS (
-                SELECT
-                    E.RapportoAspetto,
-                    COUNT(*) AS N
-                FROM Visualizzazione V
-                INNER JOIN Edizione E
-                    ON E.ID = V.Edizione
-                WHERE V.Utente = id_utente
-                GROUP BY E.RapportoAspetto
-            )
-        SELECT
-            RapportoAspetto
-        FROM RapportoAspettoVisualizzazioni
-        ORDER BY N DESC, RapportoAspetto
+            V.`NomeRegista`,
+            V.`CognomeRegista`,
+            COUNT(*)
+        FROM `VisualizzazioniUtente` V
+        GROUP BY V.`NomeRegista`, V.`CognomeRegista`
+        ORDER BY COUNT(*) DESC
         LIMIT 1
-    );
+    ), `PunteggioRegista` AS (
+        SELECT 1 AS Punteggio
+        FROM `RegistaVisualizzazioni` R
+            INNER JOIN `Film` F USING(`NomeRegista`, `CognomeRegista`)
+        WHERE F.`ID` = id_film
+    ),
 
 
-    -- -------------------------------
-    -- Determino i Valori Booleani
-    -- -------------------------------
-
-    -- L'idea e' di creare delle Temporay Table contenente i vari parametri di interesse del
-    -- film (e.g. Generi) per poi andare a determinare quali preferenze sono soddisfatte
-
-    DROP TEMPORARY TABLE IF EXISTS GeneriFilm;
-    CREATE TEMPORARY TABLE IF NOT EXISTS GeneriFilm
-        SELECT Genere
-        FROM GenereFilm
-        WHERE Film = id_film;
-
-    DROP TEMPORARY TABLE IF EXISTS AttoriFilm;
-    CREATE TEMPORARY TABLE IF NOT EXISTS AttoriFilm
+    `RapportoAspettoVisualizzazioni` AS (
         SELECT
-            NomeAttore,
-            CognomeAttore
-        FROM Recitazione
-        WHERE Film = id_film;
+            V.`RapportoAspetto`,
+            COUNT(*)
+        FROM `VisualizzazioniUtente` V
+        GROUP BY V.`RapportoAspetto`
+        ORDER BY COUNT(*) DESC
+        LIMIT 1
+    ), `PunteggioRapportoAspetto` AS (
+        SELECT 1 AS Punteggio
+        FROM `RapportoAspettoVisualizzazioni` R
+            INNER JOIN `Edizione` E USING(`RapportoAspetto`)
+        WHERE E.`Film` = id_film
+        LIMIT 1
+    ),
 
-    DROP TEMPORARY TABLE IF EXISTS LingueFilm;
-    CREATE TEMPORARY TABLE IF NOT EXISTS LingueFilm
-        SELECT DISTINCT
-            D.Lingua
-        FROM Edizione E
-        INNER JOIN File F
-            ON F.Edizione = E.ID
-        INNER JOIN Doppiaggio D
-            ON D.File = F.ID
-        WHERE E.Film = id_film;
+    `Punteggi` AS (
+        SELECT *
+        FROM `PunteggiGeneri`
 
-    SET G1_b = (
-        SELECT COUNT(*)
-        FROM GeneriFilm
-        WHERE Genere = G1
-    );
+        UNION ALL
 
-    SET G2_b = (
-        SELECT COUNT(*)
-        FROM GeneriFilm
-        WHERE Genere = G2
-    );
+        SELECT *
+        FROM `PunteggiAttori`
 
-    SET A1_b = (
-        SELECT COUNT(*)
-        FROM AttoriFilm
-        WHERE NomeAttore = A1_Nome
-        AND CognomeAttore = A1_Cognome
-    );
+        UNION ALL
 
-    SET A2_b = (
-        SELECT COUNT(*)
-        FROM AttoriFilm
-        WHERE NomeAttore = A2_Nome
-        AND CognomeAttore = A2_Cognome
-    );
+        SELECT *
+        FROM `PunteggiLingue`
 
-    SET A3_b = (
-        SELECT COUNT(*)
-        FROM AttoriFilm
-        WHERE NomeAttore = A3_Nome
-        AND CognomeAttore = A3_Cognome
-    );
+        UNION ALL
 
-    SET L1_b = (
-        SELECT COUNT(*)
-        FROM LingueFilm
-        WHERE Lingua = L1
-    );
+        SELECT *
+        FROM `PunteggioRegista`
 
-    SET L2_b = (
-        SELECT COUNT(*)
-        FROM LingueFilm
-        WHERE Lingua = L2
-    );
+        UNION ALL
 
-    SET R_b = (
-        SELECT COUNT(*)
-        FROM Film
-        WHERE ID = id_film
-        AND NomeRegista = R_Nome
-        AND CognomeRegista = R_Cognome
-    );
+        SELECT *
+        FROM `PunteggioRapportoAspetto`
+    )
+    SELECT (FLOOR(SUM(`Punteggio`)) / 2.0) INTO out_value 
+    FROM `Punteggi`;
 
-    SET RA_b = (
-        SELECT COUNT(*)
-        FROM (
-            SELECT DISTINCT
-                RapportoAspetto
-            FROM Edizione
-            WHERE Film = id_film
-            AND RapportoAspetto = RA
-        ) AS T
-    );
+    RETURN IFNULL(out_value, 0.0);
 
-    RETURN FLOOR(2 * G1_b + G2_b + 1.5 * A1_b + A2_b + 0.5 * A3_b + L1_b + L2_b + R_b + RA_b) / 2;
+END //
 
-END
-//
 DELIMITER ;

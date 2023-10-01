@@ -57,7 +57,7 @@ BEGIN
 
     SET RMU := (
         SELECT
-            IFNULL(MAX(F2.MediaRecensioni), 0)
+            IFNULL(MAX(F2.MediaRecensioni), 100000)
         FROM Film F1
         INNER JOIN GenereFilm GF1
         ON GF1.Film = F1.ID

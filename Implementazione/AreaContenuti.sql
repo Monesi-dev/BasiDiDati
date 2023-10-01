@@ -114,7 +114,7 @@ CREATE TABLE IF NOT EXISTS `Critica` (
   CHECK(`Voto` BETWEEN 0.0 AND 5.0)
 ) Engine=InnoDB;
 
-CREATE TABLE IF NOT EXISTS `FilmSphere`.`Genere` (
+CREATE TABLE IF NOT EXISTS `Genere` (
   `Nome` VARCHAR(50) NOT NULL PRIMARY KEY
 ) Engine=InnoDB;
 
@@ -127,4 +127,27 @@ CREATE TABLE IF NOT EXISTS `GenereFilm` (
     ON UPDATE CASCADE ON DELETE CASCADE,
   FOREIGN KEY(`Genere`) REFERENCES `Genere` (`Nome`)
     ON UPDATE CASCADE ON DELETE CASCADE 
-) Engine = InnoDB;
+) Engine=InnoDB;
+
+DROP TRIGGER IF EXISTS `CriticaDataValida`;
+
+DELIMITER $$
+
+CREATE TRIGGER `CriticaDataValida`
+BEFORE INSERT ON `Critica` 
+FOR EACH ROW
+BEGIN
+    DECLARE anno_film YEAR;
+    
+    SELECT F.`Anno` INTO anno_film
+    FROM `Film` F
+    WHERE F.`ID` = NEW.`Film`;
+
+    IF anno_film > YEAR(NEW.`Data`) THEN
+        SIGNAL SQLSTATE '45000'
+          SET MESSAGE_TEXT = 'Data della Critica non valida!';
+    END IF;
+
+END $$
+
+DELIMITER ;

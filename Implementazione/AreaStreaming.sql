@@ -176,8 +176,7 @@ CREATE TRIGGER `ModificaErogazione`
 BEFORE UPDATE ON Erogazione
 FOR EACH ROW     
 BEGIN
-    SET NEW.InizioErogazione = CURRENT_TIMESTAMP;
-
+    -- SET NEW.InizioErogazione = CURRENT_TIMESTAMP;
     IF NEW.`Server` <> OLD.`Server` THEN
         CALL AggiungiErogazioneServer(NEW.`Server`);
         CALL RimuoviErogazioneServer(OLD.`Server`);
